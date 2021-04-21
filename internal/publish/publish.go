@@ -1,14 +1,17 @@
 package publish
 
 import (
+	"context"
 	"fmt"
+	"sync"
 
-	"github.com/saromanov/rabbitmq-rpc/internal/tools"
-	"github.com/saromanov/rabbitmq-rpc/internal/models"
-	"github.com/streadway/amqp"
 	"github.com/pkg/errors"
+	"github.com/saromanov/rabbitmq-rpc/internal/models"
+	"github.com/saromanov/rabbitmq-rpc/internal/tools"
+	"github.com/streadway/amqp"
 )
 type Publish struct {
+	mu sync.Mutex
 	channel *amqp.Channel
 	calls map[string]*models.Call
 }
@@ -19,13 +22,14 @@ func New(channel *amqp.Channel) (*Publish, error){
 		return nil, errors.New("channel is not defined")
 	}
 	return &Publish{
+		mu: sync.Mutex{},
 		channel: channel,
 		calls: make(map[string]*models.Call),
 	}, nil
 }
 
 // Do provides sending of the message
-func (p *Publish) Do(queue, replyQueue string, data []byte) error {
+func (p *Publish) Do(ctx context.Context, queue, replyQueue string, data []byte) error {
 	corrID := tools.GenerateUUID()
 	err := p.channel.Publish(
 		"",
@@ -42,11 +46,24 @@ func (p *Publish) Do(queue, replyQueue string, data []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to send message")
 	}
-	return p.handleCall(corrID)
+	return p.handleCall(ctx, corrID)
 }
 
-func (p *Publish) handleCall(corrID string) error {
-	p.calls[corrID] = &models.Call{Done: make(chan bool)}
+func (p *Publish) handleCall(ctx context.Context, corrID string) error {
+	call := &models.Call{Done: make(chan bool)}
+	p.mu.Lock()
+	p.calls[corrID] = call
+	p.mu.Unlock()
+
+	select {
+	case <- call.Done:
+		return nil
+	case <- ctx.Done():
+		return errors.New("unable to get call")
+	}
+	p.mu.Lock()
+	delete(p.calls, corrID)
+	p.mu.Unlock()
 	return nil
 }
 
