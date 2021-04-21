@@ -3,6 +3,7 @@ package publish
 import (
 	"fmt"
 
+	"github.com/saromanov/rabbitmq-rpc/internal/tools"
 	"github.com/streadway/amqp"
 	"github.com/pkg/errors"
 )
@@ -29,7 +30,7 @@ func (p *Publish) Do(queue string, data []byte) error {
 		false,
 		amqp.Publishing{
 			ContentType:   "application/octet-stream",
-			CorrelationId: "mock",
+			CorrelationId: tools.GenerateUUID(),
 			ReplyTo:       "test-reply",
 			Body:          data,
 			Expiration:    "1",
