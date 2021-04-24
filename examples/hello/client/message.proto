@@ -1,0 +1,13 @@
+syntax = "proto3";
+package rpc;
+
+message Request {
+  int32 ID = 1;
+  bytes Body = 2;
+}
+
+message Response {
+  bool IsSuccess = 1;
+  bytes Body = 2;
+  string Error = 3; 
+}

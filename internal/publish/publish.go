@@ -2,7 +2,6 @@ package publish
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/pkg/errors"
