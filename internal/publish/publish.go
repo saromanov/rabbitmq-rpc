@@ -29,7 +29,7 @@ func New(channel *amqp.Channel) (*Publish, error){
 }
 
 // Do provides sending of the message
-func (p *Publish) Do(ctx context.Context, queue, replyQueue string, data []byte) error {
+func (p *Publish) Do(ctx context.Context, queue, replyQueue string, data []byte) ([]byte, error) {
 	corrID := tools.GenerateUUID()
 	err := p.channel.Publish(
 		"",
@@ -44,26 +44,27 @@ func (p *Publish) Do(ctx context.Context, queue, replyQueue string, data []byte)
 			Expiration:    "1",
 		})
 	if err != nil {
-		return errors.Wrap(err, "unable to send message")
+		return nil, errors.Wrap(err, "unable to send message")
 	}
 	return p.handleCall(ctx, corrID)
 }
 
-func (p *Publish) handleCall(ctx context.Context, corrID string) error {
+func (p *Publish) handleCall(ctx context.Context, corrID string) ([]byte, error) {
 	call := &models.Call{Done: make(chan bool)}
 	p.mu.Lock()
 	p.calls[corrID] = call
 	p.mu.Unlock()
 
+	var resp []byte
 	select {
 	case <- call.Done:
-		return nil
+		return nil, nil
 	case <- ctx.Done():
-		return errors.New("unable to get call")
+		return nil, errors.New("unable to get call")
 	}
 	p.mu.Lock()
 	delete(p.calls, corrID)
 	p.mu.Unlock()
-	return nil
+	return resp, nil
 }
 
