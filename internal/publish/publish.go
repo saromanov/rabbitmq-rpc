@@ -12,17 +12,19 @@ import (
 )
 type Publish struct {
 	mu sync.Mutex
+	unmarshaller Unmarshaller
 	channel *amqp.Channel
 	calls map[string]*models.Call
 }
 
 // New creates new publisher
-func New(channel *amqp.Channel) (*Publish, error){
+func New(channel *amqp.Channel, um Unmarshaller) (*Publish, error){
 	if channel == nil {
 		return nil, errors.New("channel is not defined")
 	}
 	return &Publish{
 		mu: sync.Mutex{},
+		unmarshaller: um,
 		channel: channel,
 		calls: make(map[string]*models.Call),
 	}, nil
@@ -58,6 +60,9 @@ func (p *Publish) handleCall(ctx context.Context, corrID string) ([]byte, error)
 	var resp []byte
 	select {
 	case <- call.Done:
+		if err := p.unmarshaller.Do(call.Data, nil); err != nil {
+			return nil, errors.Wrap(err, "unable to unmarshal data")
+		}
 		return nil, nil
 	case <- ctx.Done():
 		return nil, errors.New("unable to get call")
