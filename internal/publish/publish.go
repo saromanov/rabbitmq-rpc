@@ -31,6 +31,9 @@ func New(channel *amqp.Channel, um Unmarshaller) (*Publish, error){
 
 // Do provides sending of the message
 func (p *Publish) Do(ctx context.Context, queue, replyQueue string, data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, errors.New("data is not defined")
+	}
 	corrID := tools.GenerateUUID()
 	err := p.channel.Publish(
 		"",
