@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/saromanov/rabbitmq-rpc/internal/publish"
+	"github.com/saromanov/rabbitmq-rpc/examples/hello/proto"
 	"github.com/streadway/amqp"
 )
 
@@ -16,12 +17,17 @@ func main() {
 	defer conn.Close()
 	ch, err := conn.Channel()
 	if err != nil {
-	  panic(err)
+		panic(err)
 	}
 	defer ch.Close()
 	p, err := publish.New(ch, nil)
 	if err != nil {
-	  panic(err)
+		panic(err)
 	}
-	p.Do(ctx, "test", "reply", nil)
+	msg := proto.Request{ID: 1}
+	res, err := msg.Marshal()
+	if err != nil {
+		panic(err)
+	}
+	p.Do(ctx, "test", "reply", res)
 }
