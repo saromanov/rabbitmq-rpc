@@ -1,22 +1,25 @@
 package rpc
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/streadway/amqp"
 )
 
-type CallHandler func(funcID int32, args []byte) ([]byte, error)
+// Handler defines method for handling of request
 
+type Handler func([]byte)([]byte, error)
 type Server interface {
 	Close()
-	Serve(handler CallHandler)
+	Serve(context.Context)
 }
 
 type Receive struct {
 	channel *amqp.Channel
-	delivery
+	msgs    <-chan amqp.Delivery
+	done    chan bool
 }
 
 func New(channel *amqp.Channel, queue string) (Server, error) {
@@ -34,62 +37,36 @@ func New(channel *amqp.Channel, queue string) (Server, error) {
 		return nil, errors.Wrap(err, "unable to subscribe to queue")
 	}
 
-	return &serverImpl{conn: conn, channel: ch, msgs: msgs, done: make(chan bool)}, nil
+	return &Receive{channel: channel, msgs: msgs, done: make(chan bool)}, nil
 }
 
-type serverImpl struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	msgs    <-chan amqp.Delivery
-	done    chan bool
-}
-
-func (srv *serverImpl) Close() {
+// Close provides closing and shutdown of the server
+func (srv *Receive) Close() {
 	if srv == nil {
 		return
 	}
 
 	srv.done <- true
-
-	if srv.channel != nil {
-		srv.channel.Close()
-	}
-
-	if srv.conn != nil {
-		srv.conn.Close()
-	}
 }
 
-func (srv *serverImpl) Serve(handler CallHandler) {
+// Serve provides receiving of the messages
+func (srv *Receive) Serve(ctx context.Context) {
 	finish := false
 	for !finish {
 		select {
 		case msg := <-srv.msgs:
-			go srv.callHandler(handler, msg)
+			go srv.callHandler(nil, msg)
+		case <-ctx.Done():
+			return
 		case <-srv.done:
 			finish = true
 		}
 	}
 }
 
-func (srv *serverImpl) callHandler(handler CallHandler, msg amqp.Delivery) {
-	var req Request
-	err := req.Unmarshal(msg.Body)
-	if err != nil {
-		panic(fmt.Sprintf("Failed unmarshal request: %v", err))
-	}
+func (srv *Receive) callHandler(f Handler, msg amqp.Delivery) {
 
-	var resp Response
-	data, err := handler(req.FuncID, req.Body)
-	if err != nil {
-		resp.IsSuccess = false
-		resp.ErrText = err.Error()
-	} else {
-		resp.IsSuccess = true
-		resp.Body = data
-	}
-
-	respData, err := resp.Marshal()
+	respData, err := f(msg.Body)
 	if err != nil {
 		panic(fmt.Sprintf("Failed marshall responce: %v", err))
 	}
