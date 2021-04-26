@@ -9,11 +9,12 @@ import (
 )
 
 // Handler defines method for handling of request
-
 type Handler func([]byte)([]byte, error)
+
+// Server defines interface for server
 type Server interface {
 	Close()
-	Serve(context.Context)
+	Serve(context.Context, Handler)
 }
 
 type Receive struct {
@@ -22,6 +23,7 @@ type Receive struct {
 	done    chan bool
 }
 
+// New creates a new receiver
 func New(channel *amqp.Channel, queue string) (Server, error) {
 	msgs, err := channel.Consume(
 		queue,
@@ -50,12 +52,12 @@ func (srv *Receive) Close() {
 }
 
 // Serve provides receiving of the messages
-func (srv *Receive) Serve(ctx context.Context) {
+func (srv *Receive) Serve(ctx context.Context, f Handler) {
 	finish := false
 	for !finish {
 		select {
 		case msg := <-srv.msgs:
-			go srv.callHandler(nil, msg)
+			go srv.callHandler(f, msg)
 		case <-ctx.Done():
 			return
 		case <-srv.done:
